@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-MAZU_DEV_IMAGE=ubuntu
+MAZU_DEV_IMAGE=zhouchao0429/freesar_env_ubuntu:v0.1
 LOCAL_FREESAR_PATH=`pwd`
 if ! docker pull "${MAZU_DEV_IMAGE}"; then
     error "Failed to pull docker image ${MAZU_DEV_IMAGE}, check locally"
@@ -13,4 +13,4 @@ if ! docker pull "${MAZU_DEV_IMAGE}"; then
         info "Docker image ${MAZU_DEV_IMAGE} exist locally"
     fi
 fi
-sudo docker run -itv "$LOCAL_FREESAR_PATH":/FreeSAR ubuntu
+sudo docker run -itv "$LOCAL_FREESAR_PATH":/FreeSAR zhouchao0429/freesar_env_ubuntu:v0.1
