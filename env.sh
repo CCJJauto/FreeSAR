@@ -13,4 +13,5 @@ if ! docker pull "${MAZU_DEV_IMAGE}"; then
         info "Docker image ${MAZU_DEV_IMAGE} exist locally"
     fi
 fi
-sudo docker run -itv "$LOCAL_FREESAR_PATH":/FreeSAR zhouchao0429/freesar_env_ubuntu:v0.1
+sudo docker run --net host -itv "$LOCAL_FREESAR_PATH":/FreeSAR zhouchao0429/freesar_env_ubuntu:v0.1 /bin/bash
+
