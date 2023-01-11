@@ -53,7 +53,7 @@
 #define portSYSTEM_PROGRAM_STATUS_WORD					( 0x000008FFUL ) /* Supervisor Mode, MPU Register Set 0 and Call Depth Counting disabled. */
 #define portINITIAL_PRIVILEGED_PROGRAM_STATUS_WORD		( 0x000014FFUL ) /* IO Level 1, MPU Register Set 1 and Call Depth Counting disabled. */
 #define portINITIAL_UNPRIVILEGED_PROGRAM_STATUS_WORD	( 0x000010FFUL ) /* IO Level 0, MPU Register Set 1 and Call Depth Counting disabled. */
-#define portINITIAL_PCXI_UPPER_CONTEXT_WORD				( 0x00C00000UL ) /* The lower 20 bits identify the CSA address. */
+#define portINITIAL_PCXI_UPPER_CONTEXT_WORD				( 0x00C00000UL ) /* The lower 20 bits identify the CSA address. */ /*Keep the PIE UL set*/
 #define portINITIAL_SYSCON								( 0x00000000UL ) /* MPU Disable. */
 
 /* CSA manipulation macros. */
@@ -103,6 +103,8 @@ uint32_t *pulLowerCSA = NULL;
 
 	/* 16 Address Registers (4 Address registers are global), 16 Data
 	Registers, and 3 System Registers.
+
+	4 Address registers is either belong to upper context nor lower context
 
 	There are 3 registers that track the CSAs.
 		FCX points to the head of globally free set of CSAs.
