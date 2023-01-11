@@ -1,7 +1,7 @@
 /*
  * FreeRTOS Kernel V10.5.1
  * Copyright (C) 2021 Amazon.com, Inc. or its affiliates.  All Rights Reserved.
- * Copyright (C) 2022 CCAuto
+ * Copyright (C) 2022 CCAuto.  All Rights Reserved.
  *
  * SPDX-License-Identifier: MIT
  *
