@@ -31,9 +31,8 @@
 #include "FreeRTOS.h"
 
 /* Machine includes */
-#include <tc1782.h>
-#include <machine/intrinsics.h>
-#include <machine/cint.h>
+#include "Cpu/Std/IfxCpu_Intrinsics.h"
+#include <Ifx_reg.h>
 /*---------------------------------------------------------------------------*/
 
 /*
@@ -194,7 +193,7 @@ void vInternalProtectionTrap( int iTrapIdentification )
 			
 		default:
 		
-			pxCurrentTCB[ 0 ] = __MFCR( $PCXI );
+			pxCurrentTCB[ 0 ] = __MFCR( CPU_PCXI );
 			_debug();
 			break;
 	}

@@ -32,15 +32,16 @@
 #include <string.h>
 
 /* TriCore specific includes. */
-#include <tc1782.h>
-#include <machine/intrinsics.h>
-#include <machine/cint.h>
-#include <machine/wdtcon.h>
+#include "Cpu/Std/IfxCpu_Intrinsics.h"
+#include <Ifx_reg.h>
 
 /* Kernel includes. */
+#include "FreeRTOSConfig.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "list.h"
+
+#include "portmacro.h"
 
 #if configCHECK_FOR_STACK_OVERFLOW > 0
 	#error "Stack checking cannot be used with this port, as, unlike most ports, the pxTopOfStack member of the TCB is consumed CSA.  CSA starvation, loosely equivalent to stack overflow, will result in a trap exception."
@@ -96,7 +97,7 @@ extern volatile uint32_t *pxCurrentTCB;
 static const uint32_t ulCompareMatchValue = ( configPERIPHERAL_CLOCK_HZ / configTICK_RATE_HZ );
 
 /*-----------------------------------------------------------*/
-
+/*Initialize the stack of new tasks*/
 StackType_t *pxPortInitialiseStack( StackType_t * pxTopOfStack, TaskFunction_t pxCode, void *pvParameters )
 {
 uint32_t *pulUpperCSA = NULL;
@@ -129,7 +130,7 @@ uint32_t *pulLowerCSA = NULL;
 		_dsync();
 
 		/* Consume two free CSAs. */
-		pulLowerCSA = portCSA_TO_ADDRESS( __MFCR( $FCX ) );
+		pulLowerCSA = portCSA_TO_ADDRESS( __MFCR( CPU_FCX ) );
 		if( NULL != pulLowerCSA )
 		{
 			/* The Lower Links to the Upper. */
@@ -142,7 +143,7 @@ uint32_t *pulLowerCSA = NULL;
 			/* Remove the two consumed CSAs from the free CSA list. */
 			_disable();
 			_dsync();
-			_mtcr( $FCX, pulUpperCSA[ 0 ] );
+			_mtcr( CPU_FCX, pulUpperCSA[ 0 ] );
 			_isync();
 			_enable();
 		}
@@ -181,7 +182,7 @@ uint32_t *pulLowerCSA = NULL;
 }
 /*-----------------------------------------------------------*/
 
-int32_t xPortStartScheduler( void )
+BaseType_t xPortStartScheduler( void )
 {
 extern void vTrapInstallHandlers( void );
 uint32_t ulMFCR = 0UL;
@@ -206,7 +207,7 @@ uint32_t *pulLowerCSA = NULL;
 
 	/* Enable then install the priority 1 interrupt for pending context
 	switches from an ISR.  See mod_SRC in the TriCore manual. */
-	CPU_SRC0.reg = 	( portENABLE_CPU_INTERRUPT ) | ( configKERNEL_YIELD_PRIORITY );
+	SRC_CPU0SB.U = 	( portENABLE_CPU_INTERRUPT ) | ( configKERNEL_YIELD_PRIORITY );
 	if( 0 == _install_int_handler( configKERNEL_YIELD_PRIORITY, prvInterruptYield, 0 ) )
 	{
 		/* Failed to install the yield handler, force an assert. */
@@ -216,24 +217,25 @@ uint32_t *pulLowerCSA = NULL;
 	_disable();
 
 	/* Load the initial SYSCON. */
-	_mtcr( $SYSCON, portINITIAL_SYSCON );
+	/* FIXME current only port to cpu0*/
+	_mtcr( CPU0_SYSCON, portINITIAL_SYSCON );
 	_isync();
 
 	/* ENDINIT has already been applied in the 'cstart.c' code. */
 
 	/* Clear the PSW.CDC to enable the use of an RFE without it generating an
 	exception because this code is not genuinely in an exception. */
-	ulMFCR = __MFCR( $PSW );
+	ulMFCR = __MFCR( CPU_PSW );
 	ulMFCR &= portRESTORE_PSW_MASK;
 	_dsync();
-	_mtcr( $PSW, ulMFCR );
+	_mtcr( CPU_PSW, ulMFCR );
 	_isync();
 
 	/* Finally, perform the equivalent of a portRESTORE_CONTEXT() */
 	pulLowerCSA = portCSA_TO_ADDRESS( ( *pxCurrentTCB ) );
 	pulUpperCSA = portCSA_TO_ADDRESS( pulLowerCSA[0] );
 	_dsync();
-	_mtcr( $PCXI, *pxCurrentTCB );
+	_mtcr( CPU_PCXI, *pxCurrentTCB );
 	_isync();
 	_nop();
 	_rslcx();
@@ -249,34 +251,24 @@ uint32_t *pulLowerCSA = NULL;
 
 static void prvSetupTimerInterrupt( void )
 {
-	/* Set-up the clock divider. */
-	unlock_wdtcon();
-	{
-		/* Wait until access to Endint protected register is enabled. */
-		while( 0 != ( WDT_CON0.reg & 0x1UL ) );
-
-		/* RMC == 1 so STM Clock == FPI */
-		STM_CLC.reg = ( 1UL << 8 );
-	}
-	lock_wdtcon();
-
     /* Determine how many bits are used without changing other bits in the CMCON register. */
-	STM_CMCON.reg &= ~( 0x1fUL );
-	STM_CMCON.reg |= ( 0x1fUL - __CLZ( configPERIPHERAL_CLOCK_HZ / configTICK_RATE_HZ ) );
+	STM0_CMCON.U &= ~( 0x1fUL );
+	STM0_CMCON.U |= ( 0x1fUL - __CLZ( configPERIPHERAL_CLOCK_HZ / configTICK_RATE_HZ ) );
 
 	/* Take into account the current time so a tick doesn't happen immediately. */
-	STM_CMP0.reg = ulCompareMatchValue + STM_TIM0.reg;
+	STM0_CMP0.U = ulCompareMatchValue + STM0_TIM0.U;
 
 	if( 0 != _install_int_handler( configKERNEL_INTERRUPT_PRIORITY, prvSystemTickHandler, 0 ) )
 	{
-		/* Set-up the interrupt. */
-		STM_SRC0.reg = ( configKERNEL_INTERRUPT_PRIORITY | 0x00005000UL );
+		/* Set-up the interrupt priority. */
+	    SRC_STM0SR0.B.SRPN = configKERNEL_INTERRUPT_PRIORITY;
 
 		/* Enable the Interrupt. */
-		STM_ISRR.reg &= ~( 0x03UL );
-		STM_ISRR.reg |= 0x1UL;
-		STM_ISRR.reg &= ~( 0x07UL );
-		STM_ICR.reg |= 0x1UL;
+	    /* First clear the interrupt request*/
+		STM0_ISCR.B.CMP0IRR = 0x1UL;
+		/* Enable the interrupt on compare match with CMP0*/
+		/* Interrupt output STMIR0 selected */
+		STM0_ICR.U |= 0x1UL;
 	}
 	else
 	{
@@ -298,7 +290,7 @@ int32_t lYieldRequired;
 	( void ) iArg;
 
 	/* Clear the interrupt source. */
-	STM_ISRR.reg = 1UL;
+	STM0_ISCR.B.CMP0IRR = 0x1UL;
 
 	/* Reload the Compare Match register for X ticks into the future.
 
@@ -317,7 +309,7 @@ int32_t lYieldRequired;
 	Changing the tick source to a timer that has an automatic reset on compare
 	match (such as a GPTA timer) will reduce the maximum possible additional
 	period to exactly 1 times the desired period. */
-	STM_CMP0.reg += ulCompareMatchValue;
+	STM0_CMP0.U += ulCompareMatchValue;
 
 	/* Kernel API calls require Critical Sections. */
 	ulSavedInterruptMask = portSET_INTERRUPT_MASK_FROM_ISR();
@@ -350,12 +342,12 @@ int32_t lYieldRequired;
 		enabled/disabled. */
 		_disable();
 		_dsync();
-		xUpperCSA = __MFCR( $PCXI );
+		xUpperCSA = __MFCR( CPU_PCXI );
 		pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
 		*pxCurrentTCB = pxUpperCSA[ 0 ];
 		vTaskSwitchContext();
 		pxUpperCSA[ 0 ] = *pxCurrentTCB;
-		CPU_SRC0.bits.SETR = 0;
+		SRC_CPU0SB.B.SETR = 0;
 		_isync();
 	}
 }
@@ -420,14 +412,14 @@ uint32_t *pulNextCSA;
 	{
 		/* Look up the current free CSA head. */
 		_dsync();
-		pxFreeCSA = __MFCR( $FCX );
+		pxFreeCSA = __MFCR( CPU_FCX );
 
 		/* Join the current Free onto the Tail of what is being reclaimed. */
 		portCSA_TO_ADDRESS( pxTailCSA )[ 0 ] = pxFreeCSA;
 
 		/* Move the head of the reclaimed into the Free. */
 		_dsync();
-		_mtcr( $FCX, pxHeadCSA );
+		_mtcr( CPU_FCX, pxHeadCSA );
 		_isync();
 	}
 	_enable();
@@ -470,12 +462,12 @@ extern volatile uint32_t *pxCurrentTCB;
 			enabled/disabled. */
 			_disable();
 			_dsync();
-			xUpperCSA = __MFCR( $PCXI );
+			xUpperCSA = __MFCR( CPU_PCXI );
 			pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
 			*pxCurrentTCB = pxUpperCSA[ 0 ];
 			vTaskSwitchContext();
 			pxUpperCSA[ 0 ] = *pxCurrentTCB;
-			CPU_SRC0.bits.SETR = 0;
+			SRC_CPU0SB.B.SETR = 0;
 			_isync();
 			break;
 
@@ -517,12 +509,12 @@ extern volatile uint32_t *pxCurrentTCB;
 	enabled/disabled. */
 	_disable();
 	_dsync();
-	xUpperCSA = __MFCR( $PCXI );
+	xUpperCSA = __MFCR( CPU_PCXI );
 	pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
 	*pxCurrentTCB = pxUpperCSA[ 0 ];
 	vTaskSwitchContext();
 	pxUpperCSA[ 0 ] = *pxCurrentTCB;
-	CPU_SRC0.bits.SETR = 0;
+	SRC_CPU0SB.B.SETR = 0;
 	_isync();
 }
 /*-----------------------------------------------------------*/
@@ -532,8 +524,8 @@ uint32_t uxPortSetInterruptMaskFromISR( void )
 uint32_t uxReturn = 0UL;
 
 	_disable();
-	uxReturn = __MFCR( $ICR );
-	_mtcr( $ICR, ( ( uxReturn & ~portCCPN_MASK ) | configMAX_SYSCALL_INTERRUPT_PRIORITY ) );
+	uxReturn = __MFCR( CPU_ICR );
+	_mtcr( CPU_ICR, ( ( uxReturn & ~portCCPN_MASK ) | configMAX_SYSCALL_INTERRUPT_PRIORITY ) );
 	_isync();
 	_enable();
 
