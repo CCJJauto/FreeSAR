@@ -32,8 +32,7 @@
 #include <string.h>
 
 /* TriCore specific includes. */
-#include "Cpu/Std/IfxCpu_Intrinsics.h"
-#include <Ifx_reg.h>
+#include "Platform_Types.h"
 
 /* Kernel includes. */
 #include "FreeRTOSConfig.h"
@@ -42,6 +41,7 @@
 #include "list.h"
 
 #include "portmacro.h"
+#include "portcompiler.h"
 
 #if configCHECK_FOR_STACK_OVERFLOW > 0
 	#error "Stack checking cannot be used with this port, as, unlike most ports, the pxTopOfStack member of the TCB is consumed CSA.  CSA starvation, loosely equivalent to stack overflow, will result in a trap exception."
@@ -77,11 +77,6 @@
  */
 static void prvSystemTickHandler( int ) __attribute__((longcall));
 static void prvSetupTimerInterrupt( void );
-
-/*
- * Trap handler for yields.
- */
-static void prvTrapYield( int iTrapIdentification );
 
 /*
  * Priority 1 interrupt handler for yields pended from an interrupt.
@@ -127,10 +122,10 @@ uint32_t *pulLowerCSA = NULL;
 	portENTER_CRITICAL();
 	{
 		/* DSync to ensure that buffering is not a problem. */
-		_dsync();
+		__dsync();
 
 		/* Consume two free CSAs. */
-		pulLowerCSA = portCSA_TO_ADDRESS( __MFCR( CPU_FCX ) );
+		pulLowerCSA = portCSA_TO_ADDRESS( __mfcr( CPU_FCX ) );
 		if( NULL != pulLowerCSA )
 		{
 			/* The Lower Links to the Upper. */
@@ -141,16 +136,16 @@ uint32_t *pulLowerCSA = NULL;
 		if( ( NULL != pulLowerCSA ) && ( NULL != pulUpperCSA ) )
 		{
 			/* Remove the two consumed CSAs from the free CSA list. */
-			_disable();
-			_dsync();
-			_mtcr( CPU_FCX, pulUpperCSA[ 0 ] );
-			_isync();
-			_enable();
+			__disable();
+			__dsync();
+			__mtcr( CPU_FCX, pulUpperCSA[ 0 ] );
+			__isync();
+			__enable();
 		}
 		else
 		{
 			/* Simply trigger a context list depletion trap. */
-			_svlcx();
+			__svlcx();
 		}
 	}
 	portEXIT_CRITICAL();
@@ -176,7 +171,7 @@ uint32_t *pulLowerCSA = NULL;
 	pxTopOfStack = (uint32_t * ) portADDRESS_TO_CSA( pulLowerCSA );
 
 	/* DSync to ensure that buffering is not a problem. */
-	_dsync();
+	__dsync();
 
 	return pxTopOfStack;
 }
@@ -184,7 +179,6 @@ uint32_t *pulLowerCSA = NULL;
 
 BaseType_t xPortStartScheduler( void )
 {
-extern void vTrapInstallHandlers( void );
 uint32_t ulMFCR = 0UL;
 uint32_t *pulUpperCSA = NULL;
 uint32_t *pulLowerCSA = NULL;
@@ -195,51 +189,37 @@ uint32_t *pulLowerCSA = NULL;
 	/* Set-up the timer interrupt. */
 	prvSetupTimerInterrupt();
 
-	/* Install the Trap Handlers. */
-	vTrapInstallHandlers();
-
-	/* Install the Syscall Handler for yield calls. */
-	if( 0 == _install_trap_handler( portSYSCALL_TRAP, prvTrapYield ) )
-	{
-		/* Failed to install the yield handler, force an assert. */
-		configASSERT( ( ( volatile void * ) NULL ) );
-	}
-
 	/* Enable then install the priority 1 interrupt for pending context
 	switches from an ISR.  See mod_SRC in the TriCore manual. */
 	SRC_CPU0SB.U = 	( portENABLE_CPU_INTERRUPT ) | ( configKERNEL_YIELD_PRIORITY );
-	if( 0 == _install_int_handler( configKERNEL_YIELD_PRIORITY, prvInterruptYield, 0 ) )
-	{
-		/* Failed to install the yield handler, force an assert. */
-		configASSERT( ( ( volatile void * ) NULL ) );
-	}
+	interruptHandlerInstall( (uint32)prvInterruptYield, (uint32)configKERNEL_YIELD_PRIORITY);
 
-	_disable();
+	__disable();
 
 	/* Load the initial SYSCON. */
 	/* FIXME current only port to cpu0*/
-	_mtcr( CPU0_SYSCON, portINITIAL_SYSCON );
-	_isync();
+	CPU0_SYSCON.U = portINITIAL_SYSCON ;
+	__isync();
 
 	/* ENDINIT has already been applied in the 'cstart.c' code. */
 
 	/* Clear the PSW.CDC to enable the use of an RFE without it generating an
 	exception because this code is not genuinely in an exception. */
-	ulMFCR = __MFCR( CPU_PSW );
+	ulMFCR = __mfcr( CPU_PSW );
 	ulMFCR &= portRESTORE_PSW_MASK;
-	_dsync();
-	_mtcr( CPU_PSW, ulMFCR );
-	_isync();
+	__dsync();
+	__mtcr( CPU_PSW, ulMFCR );
+	__isync();
 
 	/* Finally, perform the equivalent of a portRESTORE_CONTEXT() */
 	pulLowerCSA = portCSA_TO_ADDRESS( ( *pxCurrentTCB ) );
 	pulUpperCSA = portCSA_TO_ADDRESS( pulLowerCSA[0] );
-	_dsync();
-	_mtcr( CPU_PCXI, *pxCurrentTCB );
-	_isync();
-	_nop();
-	_rslcx();
-	_nop();
+	__dsync();
+	__mtcr( CPU_PCXI, *pxCurrentTCB );
+	__isync();
+	__nop();
+	__rslcx();
+	__nop();
 
 	/* Return to the first task selected to execute. */
 	__asm volatile( "rfe" );
@@ -253,28 +233,22 @@ static void prvSetupTimerInterrupt( void )
 {
     /* Determine how many bits are used without changing other bits in the CMCON register. */
 	STM0_CMCON.U &= ~( 0x1fUL );
-	STM0_CMCON.U |= ( 0x1fUL - __CLZ( configPERIPHERAL_CLOCK_HZ / configTICK_RATE_HZ ) );
+	STM0_CMCON.U |= ( 0x1fUL - __clz( configPERIPHERAL_CLOCK_HZ / configTICK_RATE_HZ ) );
 
 	/* Take into account the current time so a tick doesn't happen immediately. */
 	STM0_CMP0.U = ulCompareMatchValue + STM0_TIM0.U;
 
-	if( 0 != _install_int_handler( configKERNEL_INTERRUPT_PRIORITY, prvSystemTickHandler, 0 ) )
-	{
-		/* Set-up the interrupt priority. */
-	    SRC_STM0SR0.B.SRPN = configKERNEL_INTERRUPT_PRIORITY;
+	interruptHandlerInstall( (uint32)prvSystemTickHandler, (uint32)configKERNEL_INTERRUPT_PRIORITY);
 
-		/* Enable the Interrupt. */
-	    /* First clear the interrupt request*/
-		STM0_ISCR.B.CMP0IRR = 0x1UL;
-		/* Enable the interrupt on compare match with CMP0*/
-		/* Interrupt output STMIR0 selected */
-		STM0_ICR.U |= 0x1UL;
-	}
-	else
-	{
-		/* Failed to install the Tick Interrupt. */
-		configASSERT( ( ( volatile void * ) NULL ) );
-	}
+    /* Set-up the interrupt priority. */
+    SRC_STM0SR0.B.SRPN = configKERNEL_INTERRUPT_PRIORITY;
+
+    /* Enable the Interrupt. */
+    /* First clear the interrupt request*/
+    STM0_ISCR.B.CMP0IRR = 0x1UL;
+    /* Enable the interrupt on compare match with CMP0*/
+    /* Interrupt output STMIR0 selected */
+    STM0_ICR.U |= 0x1UL;
 }
 /*-----------------------------------------------------------*/
 
@@ -340,15 +314,15 @@ int32_t lYieldRequired;
 		of the task. RFE will restore the upper context of the task, jump to the
 		return address and restore the previous state of interrupts being
 		enabled/disabled. */
-		_disable();
-		_dsync();
-		xUpperCSA = __MFCR( CPU_PCXI );
+		__disable();
+		__dsync();
+		xUpperCSA = __mfcr( CPU_PCXI );
 		pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
 		*pxCurrentTCB = pxUpperCSA[ 0 ];
 		vTaskSwitchContext();
 		pxUpperCSA[ 0 ] = *pxCurrentTCB;
 		SRC_CPU0SB.B.SETR = 0;
-		_isync();
+		__isync();
 	}
 }
 /*-----------------------------------------------------------*/
@@ -408,74 +382,27 @@ uint32_t *pulNextCSA;
 		pulNextCSA = portCSA_TO_ADDRESS( pxTailCSA );
 	}
 
-	_disable();
+	__disable();
 	{
 		/* Look up the current free CSA head. */
-		_dsync();
-		pxFreeCSA = __MFCR( CPU_FCX );
+		__dsync();
+		pxFreeCSA = __mfcr( CPU_FCX );
 
 		/* Join the current Free onto the Tail of what is being reclaimed. */
 		portCSA_TO_ADDRESS( pxTailCSA )[ 0 ] = pxFreeCSA;
 
 		/* Move the head of the reclaimed into the Free. */
-		_dsync();
-		_mtcr( CPU_FCX, pxHeadCSA );
-		_isync();
+		__dsync();
+		__mtcr( CPU_FCX, pxHeadCSA );
+		__isync();
 	}
-	_enable();
+	__enable();
 }
 /*-----------------------------------------------------------*/
 
 void vPortEndScheduler( void )
 {
 	/* Nothing to do. Unlikely to want to end. */
-}
-/*-----------------------------------------------------------*/
-
-static void prvTrapYield( int iTrapIdentification )
-{
-uint32_t *pxUpperCSA = NULL;
-uint32_t xUpperCSA = 0UL;
-extern volatile uint32_t *pxCurrentTCB;
-
-	switch( iTrapIdentification )
-	{
-		case portSYSCALL_TASK_YIELD:
-			/* Save the context of a task.
-			The upper context is automatically saved when entering a trap or interrupt.
-			Need to save the lower context as well and copy the PCXI CSA ID into
-			pxCurrentTCB->pxTopOfStack. Only Lower Context CSA IDs may be saved to the
-			TCB of a task.
-
-			Call vTaskSwitchContext to select the next task, note that this changes the
-			value of pxCurrentTCB so that it needs to be reloaded.
-
-			Call vPortSetMPURegisterSetOne to change the MPU mapping for the task
-			that has just been switched in.
-
-			Load the context of the task.
-			Need to restore the lower context by loading the CSA from
-			pxCurrentTCB->pxTopOfStack into PCXI (effectively changing the call stack).
-			In the Interrupt handler post-amble, RSLCX will restore the lower context
-			of the task. RFE will restore the upper context of the task, jump to the
-			return address and restore the previous state of interrupts being
-			enabled/disabled. */
-			_disable();
-			_dsync();
-			xUpperCSA = __MFCR( CPU_PCXI );
-			pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
-			*pxCurrentTCB = pxUpperCSA[ 0 ];
-			vTaskSwitchContext();
-			pxUpperCSA[ 0 ] = *pxCurrentTCB;
-			SRC_CPU0SB.B.SETR = 0;
-			_isync();
-			break;
-
-		default:
-			/* Unimplemented trap called. */
-			configASSERT( ( ( volatile void * ) NULL ) );
-			break;
-	}
 }
 /*-----------------------------------------------------------*/
 
@@ -507,15 +434,15 @@ extern volatile uint32_t *pxCurrentTCB;
 	of the task. RFE will restore the upper context of the task, jump to the
 	return address and restore the previous state of interrupts being
 	enabled/disabled. */
-	_disable();
-	_dsync();
-	xUpperCSA = __MFCR( CPU_PCXI );
+	__disable();
+	__dsync();
+	xUpperCSA = __mfcr( CPU_PCXI );
 	pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
 	*pxCurrentTCB = pxUpperCSA[ 0 ];
 	vTaskSwitchContext();
 	pxUpperCSA[ 0 ] = *pxCurrentTCB;
 	SRC_CPU0SB.B.SETR = 0;
-	_isync();
+	__isync();
 }
 /*-----------------------------------------------------------*/
 
@@ -523,11 +450,11 @@ uint32_t uxPortSetInterruptMaskFromISR( void )
 {
 uint32_t uxReturn = 0UL;
 
-	_disable();
-	uxReturn = __MFCR( CPU_ICR );
-	_mtcr( CPU_ICR, ( ( uxReturn & ~portCCPN_MASK ) | configMAX_SYSCALL_INTERRUPT_PRIORITY ) );
-	_isync();
-	_enable();
+	__disable();
+	uxReturn = __mfcr( CPU_ICR );
+	__mtcr( CPU_ICR, ( ( uxReturn & ~portCCPN_MASK ) | configMAX_SYSCALL_INTERRUPT_PRIORITY ) );
+	__isync();
+	__enable();
 
 	/* Return just the interrupt mask bits. */
 	return ( uxReturn & portCCPN_MASK );

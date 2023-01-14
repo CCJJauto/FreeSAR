@@ -36,6 +36,7 @@ extern "C" {
 
 /* System Includes. */
 #include "Cpu/Std/IfxCpu_Intrinsics.h"
+#include <Ifx_reg.h>
 
 /*-----------------------------------------------------------
  * Port specific definitions.
@@ -102,7 +103,7 @@ extern void vTaskExitCritical( void );
 #define portADDRESS_TO_CSA( pAddress )		( ( unsigned int )( ( ( ( (unsigned int)( pAddress ) ) & 0xF0000000 ) >> 12 ) | ( ( ( unsigned int )( pAddress ) & 0x003FFFC0 ) >> 6 ) ) )
 /*---------------------------------------------------------------------------*/
 
-#define portYIELD()								_syscall( 0 )
+#define portYIELD()								__syscall( 0 )
 /* Port Restore is implicit in the platform when the function is returned from the original PSW is automatically replaced. */
 #define portSYSCALL_TASK_YIELD					0
 #define portSYSCALL_RAISE_PRIORITY				1
@@ -113,36 +114,36 @@ extern void vTaskExitCritical( void );
 /* Set ICR.CCPN to configMAX_SYSCALL_INTERRUPT_PRIORITY. */
 #define portDISABLE_INTERRUPTS()	{																									\
 										unsigned int ulICR;																			\
-										_disable();																						\
-										ulICR = __MFCR( CPU_ICR ); 		/* Get current ICR value. */										\
+										__disable();																						\
+										ulICR = __mfcr( CPU_ICR ); 		/* Get current ICR value. */										\
 										ulICR &= ~portCCPN_MASK;	/* Clear down mask bits. */											\
 										ulICR |= configMAX_SYSCALL_INTERRUPT_PRIORITY; /* Set mask bits to required priority mask. */	\
-										_mtcr( CPU_ICR, ulICR );		/* Write back updated ICR. */										\
-										_isync();																						\
-										_enable();																						\
+										__mtcr( CPU_ICR, ulICR );		/* Write back updated ICR. */										\
+										__isync();																						\
+										__enable();																						\
 									}
 
 /* Clear ICR.CCPN to allow all interrupt priorities. */
 #define portENABLE_INTERRUPTS()		{																	\
 										unsigned int ulICR;											\
-										_disable();														\
-										ulICR = __MFCR( CPU_ICR );		/* Get current ICR value. */		\
+										__disable();														\
+										ulICR = __mfcr( CPU_ICR );		/* Get current ICR value. */		\
 										ulICR &= ~portCCPN_MASK;	/* Clear down mask bits. */			\
-										_mtcr( CPU_ICR, ulICR );		/* Write back updated ICR. */		\
-										_isync();														\
-										_enable();														\
+										__mtcr( CPU_ICR, ulICR );		/* Write back updated ICR. */		\
+										__isync();														\
+										__enable();														\
 									}
 
 /* Set ICR.CCPN to uxSavedMaskValue. */
 #define portCLEAR_INTERRUPT_MASK_FROM_ISR( uxSavedMaskValue ) 	{																						\
 																	unsigned int ulICR;																\
-																	_disable();																			\
-																	ulICR = __MFCR( CPU_ICR );		/* Get current ICR value. */							\
+																	__disable();																			\
+																	ulICR = __mfcr( CPU_ICR );		/* Get current ICR value. */							\
 																	ulICR &= ~portCCPN_MASK;	/* Clear down mask bits. */								\
 																	ulICR |= uxSavedMaskValue;	/* Set mask bits to previously saved mask value. */		\
-																	_mtcr( CPU_ICR, ulICR );		/* Write back updated ICR. */							\
-																	_isync();																			\
-																	_enable();																			\
+																	__mtcr( CPU_ICR, ulICR );		/* Write back updated ICR. */							\
+																	__isync();																			\
+																	__enable();																			\
 																}
 
 
@@ -151,7 +152,7 @@ extern unsigned int uxPortSetInterruptMaskFromISR( void );
 #define portSET_INTERRUPT_MASK_FROM_ISR() 	uxPortSetInterruptMaskFromISR()
 
 /* Pend a priority 1 interrupt, which will take care of the context switch. */
-#define portYIELD_FROM_ISR( xHigherPriorityTaskWoken )		do { if( xHigherPriorityTaskWoken != pdFALSE ) { CPU_SRC0.bits.SETR = 1; _isync(); } } while( 0 )
+#define portYIELD_FROM_ISR( xHigherPriorityTaskWoken )		do { if( xHigherPriorityTaskWoken != pdFALSE ) { CPU_SRC0.bits.SETR = 1; __isync(); } } while( 0 )
 
 /*---------------------------------------------------------------------------*/
 

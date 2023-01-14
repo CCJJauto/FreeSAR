@@ -37,4 +37,16 @@
 		<nature>com.infineon.aurix.buildsystem.aurixnature</nature>
 		<nature>org.eclipse.cdt.managedbuilder.core.ScannerConfigNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>FreeRTOS-Kernel</name>
+			<type>2</type>
+			<location>C:/Infineon/FreeSAR/os/FreeRTOS-LTS/FreeRTOS/FreeRTOS-Kernel</location>
+		</link>
+		<link>
+			<name>tc3xx</name>
+			<type>2</type>
+			<location>C:/Infineon/FreeSAR/portable/Tasking/tc3xx</location>
+		</link>
+	</linkedResources>
 </projectDescription>

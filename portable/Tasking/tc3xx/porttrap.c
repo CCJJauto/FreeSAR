@@ -102,56 +102,60 @@ extern volatile uint32_t *pxCurrentTCB;
 
 /* Non-maskable Interrupt Trap Identifications. */
 #define portTIN_NMI_NON_MASKABLE_INTERRUPT					0
+
 /*---------------------------------------------------------------------------*/
-
-void vMMUTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-void vInternalProtectionTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-void vInstructionErrorTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-void vContextManagementTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-void vSystemBusAndPeripheralsTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-void vAssertionTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-void vNonMaskableInterruptTrap( int iTrapIdentification ) __attribute__( ( longcall, weak ) );
-/*---------------------------------------------------------------------------*/
-
-void vTrapInstallHandlers( void )
-{
-	if( 0 == _install_trap_handler ( portMMU_TRAP, vMMUTrap ) )
-	{
-		_debug();
-	}
-
-	if( 0 == _install_trap_handler ( portIPT_TRAP, vInternalProtectionTrap ) )
-	{
-		_debug();
-	}
-
-	if( 0 == _install_trap_handler ( portIE_TRAP, vInstructionErrorTrap ) )
-	{
-		_debug();
-	}
-
-	if( 0 == _install_trap_handler ( portCM_TRAP, vContextManagementTrap ) )
-	{
-		_debug();
-	}
-
-	if( 0 == _install_trap_handler ( portSBP_TRAP, vSystemBusAndPeripheralsTrap ) )
-	{
-		_debug();
-	}
-
-	if( 0 == _install_trap_handler ( portASSERT_TRAP, vAssertionTrap ) )
-	{
-		_debug();
-	}
-
-	if( 0 == _install_trap_handler ( portNMI_TRAP, vNonMaskableInterruptTrap ) )
-	{
-		_debug();
-	}
-}
+/*
+ * Trap handler for yields.
+ */
 /*-----------------------------------------------------------*/
 
+void prvTrapYield( int iTrapIdentification )
+{
+uint32_t *pxUpperCSA = NULL;
+uint32_t xUpperCSA = 0UL;
+extern volatile uint32_t *pxCurrentTCB;
+
+    switch( iTrapIdentification )
+    {
+        case portSYSCALL_TASK_YIELD:
+            /* Save the context of a task.
+            The upper context is automatically saved when entering a trap or interrupt.
+            Need to save the lower context as well and copy the PCXI CSA ID into
+            pxCurrentTCB->pxTopOfStack. Only Lower Context CSA IDs may be saved to the
+            TCB of a task.
+
+            Call vTaskSwitchContext to select the next task, note that this changes the
+            value of pxCurrentTCB so that it needs to be reloaded.
+
+            Call vPortSetMPURegisterSetOne to change the MPU mapping for the task
+            that has just been switched in.
+
+            Load the context of the task.
+            Need to restore the lower context by loading the CSA from
+            pxCurrentTCB->pxTopOfStack into PCXI (effectively changing the call stack).
+            In the Interrupt handler post-amble, RSLCX will restore the lower context
+            of the task. RFE will restore the upper context of the task, jump to the
+            return address and restore the previous state of interrupts being
+            enabled/disabled. */
+            __disable();
+            __dsync();
+            xUpperCSA = __mfcr( CPU_PCXI );
+            pxUpperCSA = portCSA_TO_ADDRESS( xUpperCSA );
+            *pxCurrentTCB = pxUpperCSA[ 0 ];
+            vTaskSwitchContext();
+            pxUpperCSA[ 0 ] = *pxCurrentTCB;
+            SRC_CPU0SB.B.SETR = 0;
+            __isync();
+            break;
+
+        default:
+            /* Unimplemented trap called. */
+            configASSERT( ( ( volatile void * ) NULL ) );
+            break;
+    }
+}
+
+/*---------------------------------------------------------------------------*/
 void vMMUTrap( int iTrapIdentification )
 {
 	switch( iTrapIdentification )
@@ -159,7 +163,7 @@ void vMMUTrap( int iTrapIdentification )
 	case portTIN_MMU_VIRTUAL_ADDRESS_FILL:
 	case portTIN_MMU_VIRTUAL_ADDRESS_PROTECTION:
 	default:
-		_debug();
+		__debug();
 		break;
 	}
 }
@@ -193,8 +197,8 @@ void vInternalProtectionTrap( int iTrapIdentification )
 			
 		default:
 		
-			pxCurrentTCB[ 0 ] = __MFCR( CPU_PCXI );
-			_debug();
+			pxCurrentTCB[ 0 ] = __mfcr( CPU_PCXI );
+			__debug();
 			break;
 	}
 }
@@ -211,7 +215,7 @@ void vInstructionErrorTrap( int iTrapIdentification )
 		case portTIN_IE_DATA_ADDRESS_ALIGNMENT:
 		case portTIN_IE_INVALID_LOCAL_MEMORY_ADDRESS:
 		default:
-			_debug();
+			__debug();
 			break;
 	}
 }
@@ -230,7 +234,7 @@ void vContextManagementTrap( int iTrapIdentification )
 		case portTIN_CM_CONTEXT_TYPE:
 		case portTIN_CM_NESTING_ERROR:
 		default:
-			_debug();
+			__debug();
 			break;
 	}
 }
@@ -248,7 +252,7 @@ void vSystemBusAndPeripheralsTrap( int iTrapIdentification )
 		case portTIN_SBP_PROGRAM_MEMORY_INTEGRITY_ERROR:
 		case portTIN_SBP_DATA_MEMORY_INTEGRITY_ERROR:
 		default:
-			_debug();
+			__debug();
 			break;
 	}
 }
@@ -262,7 +266,7 @@ void vAssertionTrap( int iTrapIdentification )
 		case portTIN_ASSERT_ARITHMETIC_OVERFLOW:
 		case portTIN_ASSERT_STICKY_ARITHMETIC_OVERFLOW:
 		default:
-			_debug();
+			__debug();
 			break;
 	}
 }
@@ -275,7 +279,7 @@ void vNonMaskableInterruptTrap( int iTrapIdentification )
 	{
 		case portTIN_NMI_NON_MASKABLE_INTERRUPT:
 		default:
-			_debug();
+			__debug();
 			break;
 	}
 }

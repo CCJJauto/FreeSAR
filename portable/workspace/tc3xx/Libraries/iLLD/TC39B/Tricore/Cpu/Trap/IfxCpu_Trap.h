@@ -58,6 +58,7 @@
 #include "Cpu/Std/Ifx_Types.h"
 #include "Cpu/Std/IfxCpu_Intrinsics.h"
 #include "Ifx_Cfg.h"
+#include "porttrap.h"
 
 /*******************************************************************************
 **                      Type definitions                                     **

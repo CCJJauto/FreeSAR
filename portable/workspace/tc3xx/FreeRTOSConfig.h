@@ -63,7 +63,10 @@
 #define configKERNEL_INTERRUPT_PRIORITY 255
 #define configPERIPHERAL_CLOCK_HZ 100000000
 #define configMAX_SYSCALL_INTERRUPT_PRIORITY 255
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY 255
 #define configKERNEL_YIELD_PRIORITY 1
+#define configSUPPORT_DYNAMIC_ALLOCATION 0
+#define configSUPPORT_STATIC_ALLOCATION 1
 
 /* Set the following definitions to 1 to include the API function, or zero
 to exclude the API function. */
