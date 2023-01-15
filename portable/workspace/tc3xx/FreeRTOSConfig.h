@@ -60,10 +60,9 @@
 
 /* Set os tick highest priority*/
 /*FIXME need to be determined*/
-#define configKERNEL_INTERRUPT_PRIORITY 255
+#define configKERNEL_INTERRUPT_PRIORITY 2
 #define configPERIPHERAL_CLOCK_HZ 100000000
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY 255
-#define configMAX_SYSCALL_INTERRUPT_PRIORITY 255
+#define configMAX_SYSCALL_INTERRUPT_PRIORITY 128
 #define configKERNEL_YIELD_PRIORITY 1
 #define configSUPPORT_DYNAMIC_ALLOCATION 0
 #define configSUPPORT_STATIC_ALLOCATION 1
